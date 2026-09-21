@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CampusGuard AI – Lost & Found Assistant</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50:  '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          },
+          animation: {
+            'float':   'float 3s ease-in-out infinite',
+            'pulse-slow': 'pulse 2.5s cubic-bezier(0.4,0,0.6,1) infinite',
+            'fade-in': 'fadeIn 0.3s ease-out',
+            'slide-up':'slideUp 0.35s ease-out',
+          },
+          keyframes: {
+            float:   { '0%,100%': { transform:'translateY(0)' }, '50%': { transform:'translateY(-8px)' } },
+            fadeIn:  { from: { opacity:'0' },                     to:   { opacity:'1' } },
+            slideUp: { from: { opacity:'0', transform:'translateY(20px)' }, to: { opacity:'1', transform:'translateY(0)' } },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* ── Global transitions ── */
+    *, *::before, *::after { transition-property: background-color, border-color, color; transition-duration: 250ms; }
+    html { scroll-behavior: smooth; }
+
+    /* ── Toggle switch ── */
+    .toggle-track  { width:48px; height:26px; border-radius:9999px; }
+    .toggle-thumb  { width:20px; height:20px; border-radius:50%; top:3px; left:3px; transition:transform .25s; }
+    .toggle-thumb.checked { transform:translateX(22px); }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar        { width:6px; }
+    ::-webkit-scrollbar-track  { background:transparent; }
+    ::-webkit-scrollbar-thumb  { background:#6366f1; border-radius:9999px; }
+
+    /* ── Card hover lift ── */
+    .item-card { transition: transform .2s, box-shadow .2s; }
+    .item-card:hover { transform:translateY(-3px); box-shadow:0 12px 28px rgba(99,102,241,.18); }
+
+    /* ── Chat bubble typing ── */
+    .typing-dot { animation: blink 1.2s infinite; }
+    .typing-dot:nth-child(2) { animation-delay:.2s; }
+    .typing-dot:nth-child(3) { animation-delay:.4s; }
+    @keyframes blink { 0%,80%,100%{opacity:.25} 40%{opacity:1} }
+
+    /* ── Confidence badge gradients ── */
+    .badge-high   { background:linear-gradient(135deg,#10b981,#059669); }
+    .badge-medium { background:linear-gradient(135deg,#f59e0b,#d97706); }
+    .badge-low    { background:linear-gradient(135deg,#6b7280,#4b5563); }
+
+    /* ── Skeleton loader ── */
+    .skeleton { animation:shimmer 1.5s infinite linear; background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%); background-size:200% 100%; }
+    .dark .skeleton { background:linear-gradient(90deg,#334155 25%,#475569 50%,#334155 75%); background-size:200% 100%; }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  </style>
+</head>
+
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen font-sans">
+
+<!-- ══════════════════════════ NAVBAR ══════════════════════════ -->
+<nav class="sticky top-0 z-50 bg-white/80 dark:bg-slate-800/80 backdrop-blur border-b border-slate-200 dark:border-slate-700 shadow-sm">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
+    <!-- Logo -->
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow">
+        <span class="text-white text-xl">🛡️</span>
+      </div>
+      <div>
+        <span class="font-bold text-lg text-indigo-600 dark:text-indigo-400 leading-none">CampusGuard</span>
+        <span class="block text-[10px] text-slate-400 tracking-widest uppercase">AI Lost &amp; Found</span>
+      </div>
+    </div>
+
+    <!-- Nav Links (desktop) -->
+    <div class="hidden md:flex items-center gap-1">
+      <button onclick="showSection('dashboard')" class="nav-btn active-nav px-4 py-2 rounded-lg text-sm font-medium">🏠 Dashboard</button>
+      <button onclick="showSection('lost')"      class="nav-btn px-4 py-2 rounded-lg text-sm font-medium">📋 Report Lost</button>
+      <button onclick="showSection('found')"     class="nav-btn px-4 py-2 rounded-lg text-sm font-medium">📋 Report Found</button>
+      <button onclick="showSection('matches')"   class="nav-btn px-4 py-2 rounded-lg text-sm font-medium">🤖 AI Matches</button>
+      <button onclick="showSection('browse')"    class="nav-btn px-4 py-2 rounded-lg text-sm font-medium">🔍 Browse</button>
+    </div>
+
+    <!-- Right actions -->
+    <div class="flex items-center gap-3">
+      <!-- Dark Mode Toggle -->
+      <button id="themeToggle" onclick="toggleTheme()" aria-label="Toggle theme"
+        class="toggle-track relative bg-slate-200 dark:bg-indigo-600 flex items-center border-2 border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <span id="toggleThumb" class="toggle-thumb absolute bg-white shadow flex items-center justify-center">
+          <span id="themeIcon" class="text-[10px]">☀️</span>
+        </span>
+      </button>
+      <!-- Mobile menu -->
+      <button id="mobileMenuBtn" onclick="toggleMobileMenu()" class="md:hidden p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile menu -->
+  <div id="mobileMenu" class="hidden md:hidden border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 space-y-1">
+    <button onclick="showSection('dashboard');toggleMobileMenu()" class="w-full text-left nav-btn px-3 py-2 rounded-lg text-sm font-medium">🏠 Dashboard</button>
+    <button onclick="showSection('lost');toggleMobileMenu()"      class="w-full text-left nav-btn px-3 py-2 rounded-lg text-sm font-medium">📋 Report Lost</button>
+    <button onclick="showSection('found');toggleMobileMenu()"     class="w-full text-left nav-btn px-3 py-2 rounded-lg text-sm font-medium">📋 Report Found</button>
+    <button onclick="showSection('matches');toggleMobileMenu()"   class="w-full text-left nav-btn px-3 py-2 rounded-lg text-sm font-medium">🤖 AI Matches</button>
+    <button onclick="showSection('browse');toggleMobileMenu()"    class="w-full text-left nav-btn px-3 py-2 rounded-lg text-sm font-medium">🔍 Browse</button>
+  </div>
+</nav>
+
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+  <!-- ══════════════════════════ DASHBOARD ══════════════════════════ -->
+  <section id="sec-dashboard" class="section-content animate-fade-in">
+    <!-- Hero -->
+    <div class="relative rounded-3xl overflow-hidden mb-8 bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-700 p-8 shadow-xl">
+      <div class="relative z-10">
+        <div class="inline-flex items-center gap-2 bg-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full mb-4">
+          <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse-slow inline-block"></span>
+          AI Matching Active
+        </div>
+        <h1 class="text-3xl sm:text-4xl font-bold text-white mb-2">Find What Matters 🔍</h1>
+        <p class="text-indigo-200 text-base sm:text-lg max-w-xl">AI-powered lost &amp; found platform for your campus. Report, match, and reunite items instantly.</p>
+        <div class="flex flex-wrap gap-3 mt-6">
+          <button onclick="showSection('lost')"  class="px-5 py-2.5 bg-white text-indigo-700 font-semibold rounded-xl hover:bg-indigo-50 shadow transition">📋 Report Lost Item</button>
+          <button onclick="showSection('found')" class="px-5 py-2.5 bg-indigo-500/40 text-white font-semibold rounded-xl hover:bg-indigo-500/60 border border-white/30 transition">📦 Report Found Item</button>
+        </div>
+      </div>
+      <!-- Decorative circles -->
+      <div class="absolute -right-12 -top-12 w-56 h-56 rounded-full bg-white/10"></div>
+      <div class="absolute -right-4 -bottom-16 w-72 h-72 rounded-full bg-white/5"></div>
+    </div>
+
+    <!-- Stats cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm">
+        <div class="text-3xl mb-1">😟</div>
+        <div id="stat-lost" class="text-3xl font-bold text-red-500">—</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Active Lost Items</div>
+      </div>
+      <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm">
+        <div class="text-3xl mb-1">🎉</div>
+        <div id="stat-found" class="text-3xl font-bold text-green-500">—</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Found Items Listed</div>
+      </div>
+      <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm">
+        <div class="text-3xl mb-1">✅</div>
+        <div id="stat-resolved" class="text-3xl font-bold text-indigo-500">—</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Resolved Cases</div>
+      </div>
+      <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm">
+        <div class="text-3xl mb-1">🤖</div>
+        <div id="stat-matches" class="text-3xl font-bold text-violet-500">—</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">AI Matches Found</div>
+      </div>
+    </div>
+
+    <!-- Recent items preview -->
+    <div class="grid md:grid-cols-2 gap-6">
+      <div>
+        <h2 class="text-lg font-bold mb-3 flex items-center gap-2">😟 Recent Lost Items</h2>
+        <div id="recent-lost" class="space-y-3"></div>
+      </div>
+      <div>
+        <h2 class="text-lg font-bold mb-3 flex items-center gap-2">🎉 Recent Found Items</h2>
+        <div id="recent-found" class="space-y-3"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════ REPORT LOST ══════════════════════════ -->
+  <section id="sec-lost" class="section-content hidden animate-slide-up">
+    <div class="max-w-2xl mx-auto">
+      <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div class="bg-gradient-to-r from-red-500 to-orange-500 p-6">
+          <h2 class="text-2xl font-bold text-white">😟 Report a Lost Item</h2>
+          <p class="text-red-100 text-sm mt-1">Fill in as many details as possible for better AI matching</p>
+        </div>
+        <form id="lostForm" onsubmit="submitReport(event,'lost')" class="p-6 space-y-5">
+          <input type="hidden" name="report_type" value="lost" />
+          <div id="lostFormMsg" class="hidden"></div>
+
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-1">Item Name <span class="text-red-500">*</span></label>
+              <input name="item_name" type="text" required placeholder="e.g. Black iPhone 14"
+                class="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Category</label>
+              <div class="relative">
+                <select name="category"
+                  class="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm appearance-none">
+                  <option value="auto">🤖 Auto-detect</option>
+                  <option value="phone">📱 Phone</option>
+                  <option value="laptop">💻 Laptop</option>
+                  <option value="keys">🔑 Keys</option>
+                  <option value="wallet">👛 Wallet</option>
+                  <option value="bag">🎒 Bag</option>
+                  <option value="id card">🪪 ID Card</option>
+                  <option value="headphones">🎧 Headphones</option>
+                  <option value="bottle">🍶 Bottle</option>
+                  <option value="book">📚 Book</option>
+                  <option value="glasses">👓 Glasses</option>
+                  <option value="umbrella">☂️ Umbrella</option>
+                  <option value="clothing">👕 Clothing</option>
+                  <option value="jewelry">💍 Jewelry</option>
+                  <option value="charger">🔌 Charger</option>
+                  <option value="other">📦 Other</option>
+                </select>
+                <svg class="absolute right-3 top-3 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1">Description <span class="text-red-500">*</span></label>
+            <textarea name="description" required rows="3" placeholder="Describe color, brand, unique marks, what's inside, etc."
+              class="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm resize-none"></textarea>
+          </div>
+
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-1">Last Seen Location <span class="text-red-500">*</span></label>
+              <input name="location" type="text" required placeholder="e.g. Library, Block-C"
+                class="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Date &amp; Time <span class="text-red-500">*</span></label>
+              <input name="date_time" type="datetime-local" required
+                class="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1">Your Contact (email/phone)</label>
+            <input name="contact" type="text" placeholder="Optional – so finder can reach you"
+              class="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Upload Image (optional)</label>
+            <div id="lostDropZone" onclick="document.getElementById('lostImage').click()"
+              class="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-6 text-center cursor-pointer hover:border-indigo-400 transition group">
+              <div id="lostImagePreview" class="hidden mb-3"><img id="lostImgThumb" class="mx-auto h-32 object-contain rounded-lg" /></div>
+              <div id="lostDropText" class="text-slate-400 text-sm group-hover:text-indigo-500">
+                <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                Click or drag to upload image
+              </div>
+              <input id="lostImage" name="image" type="file" accept="image/*" class="hidden" onchange="previewImage(event,'lostImgThumb','lostImagePreview','lostDropText')" />
+            </div>
+          </div>
+
+          <button type="submit" id="lostSubmitBtn"
+            class="w-full py-3 bg-gradient-to-r from-red-500 to-orange-500 text-white font-semibold rounded-xl hover:from-red-600 hover:to-orange-600 transition shadow-md text-sm">
+            🚀 Submit Lost Report
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════ REPORT FOUND ══════════════════════════ -->
+  <section id="sec-found" class="section-content hidden animate-slide-up">
+    <div class="max-w-2xl mx-auto">
+      <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div class="bg-gradient-to-r from-green-500 to-teal-500 p-6">
+          <h2 class="text-2xl font-bold text-white">🎉 Report a Found Item</h2>
+          <p class="text-green-100 text-sm mt-1">Help reunite items with their owners</p>
+        </div>
+        <form id="foundForm" onsubmit="submitReport(event,'found')" class="p-6 space-y-5">
+          <input type="hidden" name="report_type" value="found" />
+          <div id="foundFormMsg" class="hidden"></div>
+
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-1">Item Name <span class="text-red-500">*</span></label>
+              <input name="item_name" type="text" required placeholder="e.g. Blue Water Bottle"
+                class="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Category</label>
+              <div class="relative">
+                <select name="category"
+                  class="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm appearance-none">
+                  <option value="auto">🤖 Auto-detect</option>
+                  <option value="phone">📱 Phone</option>
+                  <option value="laptop">💻 Laptop</option>
+                  <option value="keys">🔑 Keys</option>
+                  <option value="wallet">👛 Wallet</option>
+                  <option value="bag">🎒 Bag</option>
+                  <option value="id card">🪪 ID Card</option>
+                  <option value="headphones">🎧 Headphones</option>
+                  <option value="bottle">🍶 Bottle</option>
+                  <option value="book">📚 Book</option>
+                  <option value="glasses">👓 Glasses</option>
+                  <option value="umbrella">☂️ Umbrella</option>
+                  <option value="clothing">👕 Clothing</option>
+                  <option value="jewelry">💍 Jewelry</option>
+                  <option value="charger">🔌 Charger</option>
+                  <option value="other">📦 Other</option>
+                </select>
+                <svg class="absolute right-3 top-3 w-4 h-4 text-slate-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1">Description <span class="text-red-500">*</span></label>
+            <textarea name="description" required rows="3" placeholder="Describe the item in detail – color, brand, stickers, damage, contents…"
+              class="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm resize-none"></textarea>
+          </div>
+
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-1">Where Found <span class="text-red-500">*</span></label>
+              <input name="location" type="text" required placeholder="e.g. Cafeteria, Table 5"
+                class="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Date &amp; Time <span class="text-red-500">*</span></label>
+              <input name="date_time" type="datetime-local" required
+                class="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1">Your Contact (email/phone)</label>
+            <input name="contact" type="text" placeholder="Optional – so owner can reach you"
+              class="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-2">Upload Image (optional)</label>
+            <div id="foundDropZone" onclick="document.getElementById('foundImage').click()"
+              class="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-6 text-center cursor-pointer hover:border-green-400 transition group">
+              <div id="foundImagePreview" class="hidden mb-3"><img id="foundImgThumb" class="mx-auto h-32 object-contain rounded-lg" /></div>
+              <div id="foundDropText" class="text-slate-400 text-sm group-hover:text-green-500">
+                <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                Click or drag to upload image
+              </div>
+              <input id="foundImage" name="image" type="file" accept="image/*" class="hidden" onchange="previewImage(event,'foundImgThumb','foundImagePreview','foundDropText')" />
+            </div>
+          </div>
+
+          <button type="submit" id="foundSubmitBtn"
+            class="w-full py-3 bg-gradient-to-r from-green-500 to-teal-500 text-white font-semibold rounded-xl hover:from-green-600 hover:to-teal-600 transition shadow-md text-sm">
+            🚀 Submit Found Report
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════ AI MATCHES ══════════════════════════ -->
+  <section id="sec-matches" class="section-content hidden animate-slide-up">
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+      <div>
+        <h2 class="text-2xl font-bold">🤖 AI-Matched Pairs</h2>
+        <p class="text-slate-500 dark:text-slate-400 text-sm">Automatically computed similarity scores between lost &amp; found items</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <label class="text-sm font-medium">Min Score:</label>
+        <input type="range" id="minConfSlider" min="0" max="90" value="0" step="10"
+          oninput="document.getElementById('minConfVal').textContent=this.value+'%'; loadMatches()"
+          class="w-28 accent-indigo-600" />
+        <span id="minConfVal" class="text-sm font-bold text-indigo-600 w-10">0%</span>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="flex flex-wrap gap-3 mb-6">
+      <span class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full badge-high text-white">● High ≥ 70%</span>
+      <span class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full badge-medium text-white">● Medium 40–69%</span>
+      <span class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full badge-low text-white">● Low &lt; 40%</span>
+    </div>
+
+    <div id="matchesList" class="space-y-4"></div>
+  </section>
+
+  <!-- ══════════════════════════ BROWSE ══════════════════════════ -->
+  <section id="sec-browse" class="section-content hidden animate-slide-up">
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+      <h2 class="text-2xl font-bold">🔍 Browse All Items</h2>
+      <div class="flex flex-wrap gap-2">
+        <button onclick="setBrowseFilter('all')"   id="filter-all"   class="filter-btn active-filter px-4 py-2 rounded-xl text-sm font-medium border">All</button>
+        <button onclick="setBrowseFilter('lost')"  id="filter-lost"  class="filter-btn px-4 py-2 rounded-xl text-sm font-medium border">😟 Lost</button>
+        <button onclick="setBrowseFilter('found')" id="filter-found" class="filter-btn px-4 py-2 rounded-xl text-sm font-medium border">🎉 Found</button>
+      </div>
+    </div>
+    <div class="mb-4 relative">
+      <svg class="absolute left-3.5 top-3 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/></svg>
+      <input id="browseSearch" type="text" placeholder="Search by name, location, description…"
+        oninput="renderBrowse()" class="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+    </div>
+    <div id="browseGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  </section>
+
+</main>
+
+<!-- ══════════════════════════ AI CHAT WIDGET ══════════════════════════ -->
+<div id="chatWidget" class="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+
+  <!-- Chat window -->
+  <div id="chatWindow" class="hidden animate-slide-up w-80 sm:w-96 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col" style="height:430px">
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white text-lg">🤖</div>
+        <div>
+          <p class="text-white font-semibold text-sm leading-none">GuardBot</p>
+          <p class="text-indigo-200 text-[10px]">AI Campus Assistant</p>
+        </div>
+      </div>
+      <button onclick="toggleChat()" class="text-white/70 hover:text-white transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <!-- Messages -->
+    <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50 dark:bg-slate-900">
+      <div class="flex gap-2">
+        <div class="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-sm flex-shrink-0">🤖</div>
+        <div class="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm px-3 py-2 rounded-2xl rounded-tl-none shadow-sm max-w-[80%]">
+          Hi! I'm GuardBot 👋 Ask me about lost/found items, how matching works, or current stats!
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick replies -->
+    <div class="px-4 py-2 flex gap-2 flex-wrap border-t border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800">
+      <button onclick="sendQuickReply('How does matching work?')" class="text-xs px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 transition">How does it work?</button>
+      <button onclick="sendQuickReply('Show me stats')"           class="text-xs px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 transition">📊 Stats</button>
+      <button onclick="sendQuickReply('How to report a lost item?')" class="text-xs px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100 transition">Report Lost</button>
+    </div>
+
+    <!-- Input -->
+    <div class="p-3 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+      <input id="chatInput" type="text" placeholder="Ask GuardBot…"
+        onkeydown="if(event.key==='Enter')sendChat()"
+        class="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+      <button onclick="sendChat()" class="px-3 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition text-sm font-medium">Send</button>
+    </div>
+  </div>
+
+  <!-- FAB -->
+  <button id="chatFab" onclick="toggleChat()"
+    class="w-14 h-14 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg hover:shadow-xl flex items-center justify-center animate-float transition-all hover:scale-110 focus:outline-none focus:ring-4 focus:ring-indigo-300"
+    aria-label="Open AI Chat">
+    <span id="fabIcon" class="text-2xl text-white">🤖</span>
+  </button>
+</div>
+
+<!-- ══════════════════════════ MODAL ══════════════════════════ -->
+<div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onclick="closeModal(event)">
+  <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl max-w-lg w-full p-6 border border-slate-200 dark:border-slate-700 animate-slide-up" onclick="event.stopPropagation()">
+    <div id="modalContent"></div>
+    <button onclick="document.getElementById('modal').classList.add('hidden');document.getElementById('modal').classList.remove('flex')"
+      class="mt-5 w-full py-2.5 bg-slate-100 dark:bg-slate-700 rounded-xl text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition">Close</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════ TOAST ══════════════════════════ -->
+<div id="toast" class="fixed top-20 right-4 z-50 hidden animate-slide-up max-w-xs w-full">
+  <div id="toastContent" class="px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white flex items-center gap-2"></div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+// CONFIG – auto-detects API base (works locally AND on Render)
+// ─────────────────────────────────────────────────────────────
+const API = window.location.origin;
+
+// ─── Category emoji map (mirrors backend) ───────────────────
+const CAT_EMOJI = {
+  phone:'📱', laptop:'💻', keys:'🔑', wallet:'👛', bag:'🎒',
+  'id card':'🪪', headphones:'🎧', bottle:'🍶', book:'📚',
+  glasses:'👓', umbrella:'☂️', clothing:'👕', jewelry:'💍',
+  charger:'🔌', tablet:'📱', other:'📦',
+};
+const getEmoji = cat => CAT_EMOJI[cat?.toLowerCase()] || '📦';
+
+// ─── Theme ───────────────────────────────────────────────────
+let isDark = localStorage.getItem('cg_theme') === 'dark';
+function applyTheme() {
+  document.documentElement.classList.toggle('dark', isDark);
+  const thumb = document.getElementById('toggleThumb');
+  const icon  = document.getElementById('themeIcon');
+  thumb.classList.toggle('checked', isDark);
+  icon.textContent = isDark ? '🌙' : '☀️';
+}
+function toggleTheme() { isDark = !isDark; localStorage.setItem('cg_theme', isDark ? 'dark' : 'light'); applyTheme(); }
+applyTheme();
+
+// ─── Navigation ──────────────────────────────────────────────
+const SECTIONS = ['dashboard','lost','found','matches','browse'];
+function showSection(name) {
+  SECTIONS.forEach(s => {
+    document.getElementById('sec-'+s).classList.toggle('hidden', s !== name);
+  });
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active-nav'));
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'matches')   loadMatches();
+  if (name === 'browse')    loadBrowse();
+}
+
+// Apply active-nav styles via CSS
+const styleEl = document.createElement('style');
+styleEl.textContent = `
+  .nav-btn { color:#64748b; }
+  .nav-btn:hover { background:#f1f5f9; color:#6366f1; }
+  .dark .nav-btn:hover { background:#1e293b; color:#818cf8; }
+  .active-nav { background:#eef2ff !important; color:#4f46e5 !important; }
+  .dark .active-nav { background:#1e1b4b !important; color:#818cf8 !important; }
+  .filter-btn { color:#64748b; border-color:#e2e8f0; background:white; }
+  .dark .filter-btn { background:#1e293b; border-color:#334155; color:#94a3b8; }
+  .active-filter { background:#eef2ff !important; border-color:#6366f1 !important; color:#4f46e5 !important; }
+  .dark .active-filter { background:#1e1b4b !important; border-color:#6366f1 !important; color:#818cf8 !important; }
+`;
+document.head.appendChild(styleEl);
+
+function toggleMobileMenu() {
+  document.getElementById('mobileMenu').classList.toggle('hidden');
+}
+
+// ─── Toast ───────────────────────────────────────────────────
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  const c = document.getElementById('toastContent');
+  c.className = `px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white flex items-center gap-2 ${type==='error'?'bg-red-500':'bg-green-500'}`;
+  c.innerHTML = (type==='error'?'❌ ':'✅ ') + msg;
+  t.classList.remove('hidden');
+  setTimeout(()=>t.classList.add('hidden'), 3500);
+}
+
+// ─── Image preview ───────────────────────────────────────────
+function previewImage(e, thumbId, previewId, dropTextId) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById(thumbId).src = ev.target.result;
+    document.getElementById(previewId).classList.remove('hidden');
+    document.getElementById(dropTextId).classList.add('hidden');
+  };
+  reader.readAsDataURL(file);
+}
+
+// ─── Submit report ───────────────────────────────────────────
+async function submitReport(e, type) {
+  e.preventDefault();
+  const form    = e.target;
+  const btn     = document.getElementById(type+'SubmitBtn');
+  const msgDiv  = document.getElementById(type+'FormMsg');
+  btn.disabled  = true;
+  btn.textContent = '⏳ Submitting…';
+
+  const fd = new FormData(form);
+  try {
+    const res  = await fetch(`${API}/api/reports`, { method:'POST', body:fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Submission failed');
+
+    msgDiv.className = 'p-3 rounded-xl bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-sm border border-green-200 dark:border-green-700';
+    msgDiv.innerHTML = `✅ Report submitted! Category auto-detected as <strong>${getEmoji(data.item.category)} ${data.item.category}</strong>. AI matching started.`;
+    msgDiv.classList.remove('hidden');
+    form.reset();
+    document.getElementById(type+'ImagePreview')?.classList.add('hidden');
+    document.getElementById(type+'DropText')?.classList.remove('hidden');
+    showToast('Report submitted successfully!');
+    setTimeout(()=>{ msgDiv.classList.add('hidden'); showSection('dashboard'); }, 2000);
+  } catch(err) {
+    msgDiv.className = 'p-3 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm border border-red-200 dark:border-red-700';
+    msgDiv.textContent = '❌ ' + err.message;
+    msgDiv.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = type==='lost' ? '🚀 Submit Lost Report' : '🚀 Submit Found Report';
+  }
+}
+
+// ─── Item card builder ───────────────────────────────────────
+function buildCard(item, compact=false) {
+  const typeColor = item.report_type==='lost'
+    ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
+    : 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300';
+  const imgHtml = item.image_url
+    ? `<img src="${API}${item.image_url}" class="w-full h-32 object-cover rounded-xl mb-3" loading="lazy" />`
+    : '';
+  const ts = new Date(item.created_at).toLocaleDateString();
+  return `
+    <div class="item-card bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm cursor-pointer"
+         onclick="openItemModal('${item.id}')">
+      ${!compact ? imgHtml : ''}
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="text-xl">${item.emoji||getEmoji(item.category)}</span>
+          <span class="font-semibold text-sm truncate">${escHtml(item.item_name)}</span>
+        </div>
+        <span class="text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${typeColor}">
+          ${item.report_type==='lost'?'😟 Lost':'🎉 Found'}
+        </span>
+      </div>
+      ${!compact ? `<p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mb-2">${escHtml(item.description)}</p>` : ''}
+      <div class="flex items-center justify-between text-xs text-slate-400">
+        <span>📍 ${escHtml(item.location)}</span>
+        <span>${ts}</span>
+      </div>
+    </div>`;
+}
+
+// ─── Confidence badge ────────────────────────────────────────
+function confidenceBadge(score) {
+  const cls = score>=70?'badge-high':score>=40?'badge-medium':'badge-low';
+  const label = score>=70?'High':score>=40?'Medium':'Low';
+  return `<span class="inline-flex items-center gap-1 text-xs font-bold text-white px-2.5 py-1 rounded-full ${cls}">
+    ${label} · ${score}%
+  </span>`;
+}
+
+// ─── Dashboard ───────────────────────────────────────────────
+async function loadDashboard() {
+  try {
+    const [statsRes, lostRes, foundRes] = await Promise.all([
+      fetch(`${API}/api/stats`),
+      fetch(`${API}/api/reports?type=lost`),
+      fetch(`${API}/api/reports?type=found`),
+    ]);
+    const stats = await statsRes.json();
+    const losts  = await lostRes.json();
+    const founds = await foundRes.json();
+
+    document.getElementById('stat-lost').textContent    = stats.active_lost;
+    document.getElementById('stat-found').textContent   = stats.active_found;
+    document.getElementById('stat-resolved').textContent= stats.resolved;
+    document.getElementById('stat-matches').textContent = stats.total_matches;
+
+    const renderRecent = (items, containerId) => {
+      const el = document.getElementById(containerId);
+      if (!items.length) { el.innerHTML = `<p class="text-slate-400 text-sm text-center py-4">No items yet</p>`; return; }
+      el.innerHTML = items.slice(0,3).map(i=>buildCard(i,true)).join('');
+    };
+    renderRecent(losts,  'recent-lost');
+    renderRecent(founds, 'recent-found');
+  } catch(e) {
+    console.error('Dashboard load error:', e);
+  }
+}
+
+// ─── Matches ─────────────────────────────────────────────────
+async function loadMatches() {
+  const minConf = document.getElementById('minConfSlider').value;
+  const el = document.getElementById('matchesList');
+  el.innerHTML = '<div class="skeleton h-24 rounded-2xl mb-3"></div>'.repeat(3);
+  try {
+    const res  = await fetch(`${API}/api/matches?min_confidence=${minConf}`);
+    const data = await res.json();
+    if (!data.length) {
+      el.innerHTML = `<div class="text-center py-16 text-slate-400">
+        <div class="text-5xl mb-3">🤖</div>
+        <p class="font-medium">No matches found yet</p>
+        <p class="text-sm mt-1">Submit both lost and found reports to see AI-matched pairs</p>
+      </div>`;
+      return;
+    }
+    el.innerHTML = data.map(m => `
+      <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 shadow-sm animate-fade-in">
+        <div class="flex items-center justify-between mb-4">
+          <span class="text-sm font-semibold text-slate-500 dark:text-slate-400">AI Match</span>
+          ${confidenceBadge(m.confidence)}
+        </div>
+        <div class="flex flex-col sm:flex-row gap-4">
+          <div class="flex-1 bg-red-50 dark:bg-red-900/20 rounded-xl p-3">
+            <p class="text-xs font-bold text-red-600 dark:text-red-400 mb-1">😟 LOST</p>
+            <p class="font-semibold text-sm">${m.lost_item?getEmoji(m.lost_item.category):''} ${escHtml(m.lost_item?.item_name||'—')}</p>
+            <p class="text-xs text-slate-500 mt-1">📍 ${escHtml(m.lost_item?.location||'')}</p>
+          </div>
+          <div class="flex items-center justify-center">
+            <div class="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-sm">↔</div>
+          </div>
+          <div class="flex-1 bg-green-50 dark:bg-green-900/20 rounded-xl p-3">
+            <p class="text-xs font-bold text-green-600 dark:text-green-400 mb-1">🎉 FOUND</p>
+            <p class="font-semibold text-sm">${m.found_item?getEmoji(m.found_item.category):''} ${escHtml(m.found_item?.item_name||'—')}</p>
+            <p class="text-xs text-slate-500 mt-1">📍 ${escHtml(m.found_item?.location||'')}</p>
+          </div>
+        </div>
+        <div class="mt-4">
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-500">Confidence Score</span>
+            <span class="font-bold">${m.confidence}%</span>
+          </div>
+          <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+            <div class="h-2 rounded-full transition-all duration-700 ${m.confidence>=70?'bg-green-500':m.confidence>=40?'bg-yellow-500':'bg-slate-400'}"
+                 style="width:${m.confidence}%"></div>
+          </div>
+        </div>
+        ${m.lost_item?.contact||m.found_item?.contact ? `
+        <div class="mt-3 text-xs text-slate-500 dark:text-slate-400">
+          ${m.lost_item?.contact?`📧 Owner contact: <span class="font-medium">${escHtml(m.lost_item.contact)}</span>`:''}
+          ${m.found_item?.contact?`&nbsp;&nbsp;📧 Finder contact: <span class="font-medium">${escHtml(m.found_item.contact)}</span>`:''}
+        </div>` : ''}
+      </div>`).join('');
+  } catch(e) {
+    el.innerHTML = `<p class="text-red-500 text-sm text-center">Failed to load matches</p>`;
+  }
+}
+
+// ─── Browse ──────────────────────────────────────────────────
+let allBrowseItems = [];
+let browseFilter   = 'all';
+async function loadBrowse() {
+  const el = document.getElementById('browseGrid');
+  el.innerHTML = '<div class="skeleton h-36 rounded-2xl col-span-3"></div>'.repeat(6);
+  try {
+    const res  = await fetch(`${API}/api/reports`);
+    allBrowseItems = await res.json();
+    renderBrowse();
+  } catch(e) { el.innerHTML = `<p class="text-red-500 text-sm col-span-3 text-center">Failed to load items</p>`; }
+}
+function setBrowseFilter(f) {
+  browseFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active-filter'));
+  document.getElementById('filter-'+f).classList.add('active-filter');
+  renderBrowse();
+}
+function renderBrowse() {
+  const q  = (document.getElementById('browseSearch')?.value||'').toLowerCase();
+  const el = document.getElementById('browseGrid');
+  let items = allBrowseItems;
+  if (browseFilter !== 'all') items = items.filter(i=>i.report_type===browseFilter);
+  if (q) items = items.filter(i=>[i.item_name,i.description,i.location,i.category].join(' ').toLowerCase().includes(q));
+  if (!items.length) {
+    el.innerHTML = `<div class="col-span-3 text-center py-16 text-slate-400">
+      <div class="text-5xl mb-3">🔍</div><p class="font-medium">No items found</p></div>`;
+    return;
+  }
+  el.innerHTML = items.map(i=>buildCard(i)).join('');
+}
+
+// ─── Item detail modal ───────────────────────────────────────
+async function openItemModal(id) {
+  const modal = document.getElementById('modal');
+  const mc    = document.getElementById('modalContent');
+  mc.innerHTML = '<div class="skeleton h-64 rounded-xl"></div>';
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  try {
+    const [itemRes, matchRes] = await Promise.all([
+      fetch(`${API}/api/reports`),
+      fetch(`${API}/api/matches/${id}`),
+    ]);
+    const items   = await itemRes.json();
+    const matches = await matchRes.json();
+    const item    = items.find(i=>i.id===id);
+    if (!item) { mc.innerHTML = '<p class="text-red-500">Item not found</p>'; return; }
+
+    const typeColor = item.report_type==='lost'?'from-red-500 to-orange-500':'from-green-500 to-teal-500';
+    mc.innerHTML = `
+      <div class="bg-gradient-to-r ${typeColor} -mx-6 -mt-6 px-6 pt-6 pb-5 mb-5 rounded-t-2xl">
+        <p class="text-white/80 text-xs font-bold uppercase mb-1">${item.report_type}</p>
+        <p class="text-white text-xl font-bold">${getEmoji(item.category)} ${escHtml(item.item_name)}</p>
+      </div>
+      ${item.image_url?`<img src="${API}${item.image_url}" class="w-full h-40 object-cover rounded-xl mb-4" />`:''}
+      <div class="space-y-2 text-sm">
+        <div class="flex gap-2"><span class="text-slate-400 w-28">Category:</span><span>${getEmoji(item.category)} ${escHtml(item.category)}</span></div>
+        <div class="flex gap-2"><span class="text-slate-400 w-28">Location:</span><span>📍 ${escHtml(item.location)}</span></div>
+        <div class="flex gap-2"><span class="text-slate-400 w-28">Date/Time:</span><span>🕐 ${escHtml(item.date_time)}</span></div>
+        <div class="flex gap-2"><span class="text-slate-400 w-28">Contact:</span><span>${item.contact?'📧 '+escHtml(item.contact):'—'}</span></div>
+        <div class="flex gap-2"><span class="text-slate-400 w-28">Description:</span><span class="flex-1">${escHtml(item.description)}</span></div>
+      </div>
+      ${matches.length ? `
+      <div class="mt-5 pt-4 border-t border-slate-200 dark:border-slate-700">
+        <p class="text-sm font-bold mb-2">🤖 AI Matches (${matches.length})</p>
+        ${matches.slice(0,3).map(m=>`
+          <div class="flex items-center justify-between bg-slate-50 dark:bg-slate-700 rounded-xl px-3 py-2 mb-2 text-xs">
+            <span>${m.lost_item?.id===id ? '🎉 '+escHtml(m.found_item?.item_name||'') : '😟 '+escHtml(m.lost_item?.item_name||'')}</span>
+            ${confidenceBadge(m.confidence)}
+          </div>`).join('')}
+      </div>` : ''}
+      <button onclick="resolveItem('${item.id}')" class="mt-4 w-full py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition">✅ Mark as Resolved</button>`;
+  } catch(e) {
+    mc.innerHTML = '<p class="text-red-500 text-sm">Failed to load details</p>';
+  }
+}
+function closeModal(e) {
+  if (e.target === document.getElementById('modal')) {
+    document.getElementById('modal').classList.add('hidden');
+    document.getElementById('modal').classList.remove('flex');
+  }
+}
+async function resolveItem(id) {
+  try {
+    await fetch(`${API}/api/reports/${id}/resolve`, { method:'PATCH' });
+    document.getElementById('modal').classList.add('hidden');
+    document.getElementById('modal').classList.remove('flex');
+    showToast('Item marked as resolved! 🎉');
+    loadDashboard();
+    if (!document.getElementById('sec-browse').classList.contains('hidden')) loadBrowse();
+  } catch(e) { showToast('Failed to resolve item','error'); }
+}
+
+// ─── Chat ────────────────────────────────────────────────────
+function toggleChat() {
+  const win = document.getElementById('chatWindow');
+  win.classList.toggle('hidden');
+  const fabIcon = document.getElementById('fabIcon');
+  fabIcon.textContent = win.classList.contains('hidden') ? '🤖' : '✕';
+}
+function sendQuickReply(msg) {
+  document.getElementById('chatInput').value = msg;
+  sendChat();
+}
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg   = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  appendChatBubble(msg, 'user');
+  appendTyping();
+  try {
+    const res  = await fetch(`${API}/api/chat`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ message: msg }),
+    });
+    const data = await res.json();
+    removeTyping();
+    appendChatBubble(data.reply, 'bot');
+  } catch(e) {
+    removeTyping();
+    appendChatBubble('⚠️ Could not reach the server. Make sure the backend is running!', 'bot');
+  }
+}
+function appendChatBubble(text, role) {
+  const msgs = document.getElementById('chatMessages');
+  const isBot = role==='bot';
+  const html = isBot
+    ? `<div class="flex gap-2 animate-fade-in">
+         <div class="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-sm flex-shrink-0">🤖</div>
+         <div class="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm px-3 py-2 rounded-2xl rounded-tl-none shadow-sm max-w-[80%]">${renderMarkdown(text)}</div>
+       </div>`
+    : `<div class="flex justify-end animate-fade-in">
+         <div class="bg-indigo-600 text-white text-sm px-3 py-2 rounded-2xl rounded-tr-none max-w-[80%]">${escHtml(text)}</div>
+       </div>`;
+  msgs.insertAdjacentHTML('beforeend', html);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+function appendTyping() {
+  const msgs = document.getElementById('chatMessages');
+  msgs.insertAdjacentHTML('beforeend',`
+    <div id="typingIndicator" class="flex gap-2">
+      <div class="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-sm flex-shrink-0">🤖</div>
+      <div class="bg-white dark:bg-slate-800 px-3 py-2.5 rounded-2xl rounded-tl-none shadow-sm flex gap-1 items-center">
+        <span class="typing-dot w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block"></span>
+        <span class="typing-dot w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block"></span>
+        <span class="typing-dot w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block"></span>
+      </div>
+    </div>`);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+function removeTyping() { document.getElementById('typingIndicator')?.remove(); }
+
+// ─── Utils ───────────────────────────────────────────────────
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function renderMarkdown(s) {
+  // Bold **text**
+  return escHtml(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+}
+
+// ─── Init ────────────────────────────────────────────────────
+loadDashboard();
+// Set datetime-local max to now
+document.querySelectorAll('input[type="datetime-local"]').forEach(el => {
+  el.max = new Date().toISOString().slice(0,16);
+});
+</script>
+</body>
+</html>

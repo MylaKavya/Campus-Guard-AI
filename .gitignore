@@ -1,0 +1,29 @@
+# ─── Python cache ─────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ─── Virtual environment ──────────────────────────────────────
+venv/
+env/
+.env/
+.venv/
+
+# ─── Database (SQLite) ────────────────────────────────────────
+backend/campusguard.db
+
+# ─── Uploads ──────────────────────────────────────────────────
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# ─── Editor / OS ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ─── Environment variables ────────────────────────────────────
+.env
+*.env
