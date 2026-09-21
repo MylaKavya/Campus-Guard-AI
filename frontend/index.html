@@ -483,7 +483,9 @@
 // ─────────────────────────────────────────────────────────────
 // CONFIG – auto-detects API base (works locally AND on Render)
 // ─────────────────────────────────────────────────────────────
-const API = window.location.origin;
+const API = (window.location.protocol === 'file:' || !window.location.host)
+  ? 'http://localhost:5000'
+  : window.location.origin;
 
 // ─── Category emoji map (mirrors backend) ───────────────────
 const CAT_EMOJI = {
@@ -603,20 +605,27 @@ function buildCard(item, compact=false) {
     : '';
   const ts = new Date(item.created_at).toLocaleDateString();
   return `
-    <div class="item-card bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm cursor-pointer"
-         onclick="openItemModal('${item.id}')">
+    <div id="card-${item.id}" class="item-card bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm">
       ${!compact ? imgHtml : ''}
       <div class="flex items-start justify-between gap-2 mb-2">
-        <div class="flex items-center gap-2 min-w-0">
+        <div class="flex items-center gap-2 min-w-0 cursor-pointer" onclick="openItemModal('${item.id}')">
           <span class="text-xl">${item.emoji||getEmoji(item.category)}</span>
           <span class="font-semibold text-sm truncate">${escHtml(item.item_name)}</span>
         </div>
-        <span class="text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${typeColor}">
-          ${item.report_type==='lost'?'😟 Lost':'🎉 Found'}
-        </span>
+        <div class="flex items-center gap-1.5 flex-shrink-0">
+          <span class="text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${typeColor}">
+            ${item.report_type==='lost'?'😟 Lost':'🎉 Found'}
+          </span>
+          <button onclick="deleteItem('${item.id}')" title="Delete"
+            class="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m2 0a1 1 0 00-1-1h-4a1 1 0 00-1 1H5a1 1 0 000 2h14a1 1 0 000-2h-2z"/>
+            </svg>
+          </button>
+        </div>
       </div>
-      ${!compact ? `<p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mb-2">${escHtml(item.description)}</p>` : ''}
-      <div class="flex items-center justify-between text-xs text-slate-400">
+      ${!compact ? `<p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mb-2 cursor-pointer" onclick="openItemModal('${item.id}')">${escHtml(item.description)}</p>` : ''}
+      <div class="flex items-center justify-between text-xs text-slate-400 cursor-pointer" onclick="openItemModal('${item.id}')">
         <span>📍 ${escHtml(item.location)}</span>
         <span>${ts}</span>
       </div>
@@ -791,7 +800,15 @@ async function openItemModal(id) {
             ${confidenceBadge(m.confidence)}
           </div>`).join('')}
       </div>` : ''}
-      <button onclick="resolveItem('${item.id}')" class="mt-4 w-full py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition">✅ Mark as Resolved</button>`;
+      <div class="mt-4 flex gap-2">
+        <button onclick="resolveItem('${item.id}')" class="flex-1 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition">✅ Mark as Resolved</button>
+        <button onclick="deleteItem('${item.id}')" class="px-4 py-2 bg-red-500 text-white rounded-xl text-sm font-semibold hover:bg-red-600 transition flex items-center gap-1.5">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m2 0a1 1 0 00-1-1h-4a1 1 0 00-1 1H5a1 1 0 000 2h14a1 1 0 000-2h-2z"/>
+          </svg>
+          Delete
+        </button>
+      </div>`;
   } catch(e) {
     mc.innerHTML = '<p class="text-red-500 text-sm">Failed to load details</p>';
   }
@@ -811,6 +828,21 @@ async function resolveItem(id) {
     loadDashboard();
     if (!document.getElementById('sec-browse').classList.contains('hidden')) loadBrowse();
   } catch(e) { showToast('Failed to resolve item','error'); }
+}
+async function deleteItem(id) {
+  if (!confirm('Delete this item? This cannot be undone.')) return;
+  try {
+    const res = await fetch(`${API}/api/reports/${id}`, { method:'DELETE' });
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
+    // Remove card instantly from whichever view it's in
+    document.getElementById('card-'+id)?.remove();
+    // Close modal if it was open for this item
+    document.getElementById('modal').classList.add('hidden');
+    document.getElementById('modal').classList.remove('flex');
+    showToast('Item deleted 🗑️');
+    loadDashboard();
+  } catch(e) { showToast('Delete failed: ' + e.message, 'error'); }
 }
 
 // ─── Chat ────────────────────────────────────────────────────

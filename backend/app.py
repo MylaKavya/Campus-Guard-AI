@@ -292,6 +292,29 @@ def resolve_report(item_id):
     return jsonify({"message": "Item marked as resolved"})
 
 
+@app.route("/api/reports/<item_id>", methods=["DELETE"])
+def delete_report(item_id):
+    try:
+        item = db.session.get(ItemReport, item_id)
+        if item is None:
+            return jsonify({"error": "Item not found"}), 404
+        # Remove associated matches first (foreign key references)
+        Match.query.filter(
+            (Match.lost_item_id == item_id) | (Match.found_item_id == item_id)
+        ).delete(synchronize_session=False)
+        # Remove uploaded image file if present
+        if item.image_url:
+            image_path = os.path.join(app.config["UPLOAD_FOLDER"], item.image_url)
+            if os.path.exists(image_path):
+                os.remove(image_path)
+        db.session.delete(item)
+        db.session.commit()
+        return jsonify({"success": True, "message": "Item deleted successfully"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/matches", methods=["GET"])
 def get_matches():
     """Fetch all AI-generated matches, highest confidence first."""
@@ -372,8 +395,8 @@ def uploaded_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 
-@app.route("/", defaults={"path": ""})
-@app.route("/<path:path>")
+@app.route("/", defaults={"path": ""}, methods=["GET", "HEAD"])
+@app.route("/<path:path>", methods=["GET", "HEAD"])
 def serve_frontend(path):
     if path and os.path.exists(os.path.join(app.static_folder, path)):
         return send_from_directory(app.static_folder, path)
